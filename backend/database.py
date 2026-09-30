@@ -66,6 +66,22 @@ def init_db():
         )
     """)
 
+    # Audio Events & Multimodal Fusion table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audio_events (
+            id TEXT PRIMARY KEY,
+            filename TEXT,
+            siren_score REAL,
+            crash_score REAL,
+            fused_score REAL,
+            modality TEXT,
+            decision TEXT,
+            junction TEXT,
+            created_at TEXT,
+            details_json TEXT
+        )
+    """)
+
     # Pre-populate initial sample incidents if database is brand new
     cursor.execute("SELECT COUNT(*) as count FROM incidents")
     if cursor.fetchone()["count"] == 0:
@@ -216,3 +232,46 @@ def save_detected_events(events: List[Dict[str, Any]]):
         ))
     conn.commit()
     conn.close()
+
+def save_audio_event(event_data: Dict[str, Any]) -> str:
+    """Stores audio classification and multimodal fusion result in SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    eid = event_data.get("id") or f"aud-{int(time.time()*1000)}"
+    cursor.execute("""
+        INSERT OR REPLACE INTO audio_events (id, filename, siren_score, crash_score, fused_score, modality, decision, junction, created_at, details_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        eid,
+        event_data.get("filename", "audio.wav"),
+        float(event_data.get("siren_score", 0.0)),
+        float(event_data.get("crash_score", 0.0)),
+        float(event_data.get("fused_score", 0.0)),
+        event_data.get("modality", "accident"),
+        event_data.get("decision", "NORMAL"),
+        event_data.get("junction", "J2"),
+        time.strftime("%Y-%m-%d %H:%M:%S"),
+        json.dumps(event_data)
+    ))
+    conn.commit()
+    conn.close()
+    return eid
+
+def list_audio_events(limit: int = 50) -> List[Dict[str, Any]]:
+    """Lists audio events from SQLite."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM audio_events ORDER BY created_at DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("details_json"):
+            try:
+                d["details"] = json.loads(d["details_json"])
+            except Exception:
+                pass
+        result.append(d)
+    return result
+

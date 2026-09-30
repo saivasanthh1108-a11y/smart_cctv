@@ -113,6 +113,71 @@ export async function analyzeVideo(file) {
   }
 }
 
+export async function analyzeAudio(file, options = {}) {
+  try {
+    const formData = new FormData();
+    if (file) {
+      formData.append('file', file);
+    }
+    const params = new URLSearchParams();
+    if (options.visionScore !== undefined) params.append('vision_score', options.visionScore);
+    if (options.modality) params.append('modality', options.modality);
+    if (options.junction) params.append('junction', options.junction);
+
+    const url = `${BASE_URL}/analyze-audio${params.toString() ? '?' + params.toString() : ''}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    return { success: true, data, source: 'backend' };
+  } catch (err) {
+    console.warn('FastAPI /analyze-audio offline or unreachable, using local AI mock simulation:', err.message);
+    await new Promise(r => setTimeout(r, 1000));
+    const isSiren = file?.name?.toLowerCase().includes('siren') || !file?.name?.toLowerCase().includes('crash');
+    const sirenScore = isSiren ? 0.942 : 0.085;
+    const crashScore = isSiren ? 0.112 : 0.884;
+    const visionScore = options.visionScore ?? 0.94;
+    const activeAudioScore = isSiren ? sirenScore : crashScore;
+    const fusedScore = Number(Math.min(1.0, 0.55 * visionScore + 0.35 * activeAudioScore + 0.10 * Math.sqrt(visionScore * activeAudioScore)).toFixed(3));
+
+    return {
+      success: false,
+      source: 'fallback',
+      data: {
+        processed_file: file?.name || 'sample_emergency_audio.wav',
+        model_source: 'YAMNet Audio Model (Client Simulation)',
+        audio_scores: {
+          siren_score: sirenScore,
+          crash_score: crashScore,
+          siren_detected: sirenScore >= 0.45,
+          crash_detected: crashScore >= 0.45
+        },
+        fusion: {
+          active_modality: isSiren ? 'emergency_siren' : 'accident',
+          fused_score: fusedScore,
+          threshold_met: fusedScore >= 0.70,
+          decision: fusedScore >= 0.85 ? 'CRITICAL_ACTION_REQUIRED' : 'ELEVATED_ALERT_PREEMPTION',
+          severity: 'CRITICAL',
+          formula: `F = min(1.0, 0.55 * Sv (${visionScore.toFixed(2)}) + 0.35 * Sa (${activeAudioScore.toFixed(2)}) + 0.10 * sqrt(Sv*Sa)) = ${fusedScore}`
+        },
+        corridor_preemption_active: isSiren
+      },
+      error: err.message
+    };
+  }
+}
+
 export async function postDispatchIncident(incident) {
   try {
     const res = await fetch(`${BASE_URL}/dispatch`, {

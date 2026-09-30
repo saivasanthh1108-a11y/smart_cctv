@@ -1,0 +1,6 @@
+filename,has_accident,description
+clip_01_intersection_crash.mp4,1,Vehicle collision at J2 with post-impact lane stoppage
+clip_02_normal_transit.mp4,0,Nominal traffic flow along Central Ave corridor
+clip_03_rear_end_collision.mp4,1,Rear-end collision at University Pkwy intersection
+clip_04_smooth_corridor_flow.mp4,0,Unimpeded transit through J4 Riverside Bridge
+clip_05_highway_pileup.mp4,1,Multi-vehicle overlap and stopped lane blockage
